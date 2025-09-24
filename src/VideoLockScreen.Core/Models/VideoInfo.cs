@@ -1,4 +1,5 @@
 using System.IO;
+using VideoLockScreen.Core.Utilities;
 
 namespace VideoLockScreen.Core.Models
 {
@@ -187,5 +188,49 @@ namespace VideoLockScreen.Core.Models
 
             return IsSupported(Path.GetExtension(filePath));
         }
+    }
+
+    /// <summary>
+    /// Monitor configuration for video playback
+    /// </summary>
+    public class MonitorConfiguration
+    {
+        public MonitorInfo Monitor { get; set; } = null!;
+        public VideoLockScreenSettings VideoSettings { get; set; } = null!;
+        public RenderingMode RenderingMode { get; set; } = RenderingMode.Optimized;
+        public bool IsEnabled { get; set; } = true;
+        public int Priority { get; set; } = 0;
+        public Dictionary<string, object> CustomSettings { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Video rendering modes for performance optimization
+    /// </summary>
+    public enum RenderingMode
+    {
+        /// <summary>
+        /// Standard rendering with default settings
+        /// </summary>
+        Standard,
+        
+        /// <summary>
+        /// Optimized rendering for best performance
+        /// </summary>
+        Optimized,
+        
+        /// <summary>
+        /// High quality rendering (may impact performance)
+        /// </summary>
+        HighQuality,
+        
+        /// <summary>
+        /// Power-saving mode with reduced quality
+        /// </summary>
+        PowerSaver,
+        
+        /// <summary>
+        /// Custom rendering mode with user-defined settings
+        /// </summary>
+        Custom
     }
 }
