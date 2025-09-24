@@ -10,6 +10,7 @@ using VideoLockScreen.UI.Interfaces;
 using Application = System.Windows.Application;
 using StartupEventArgs = System.Windows.StartupEventArgs;
 using ExitEventArgs = System.Windows.ExitEventArgs;
+using MessageBox = System.Windows.MessageBox;
 
 namespace VideoLockScreen.UI
 {
@@ -84,9 +85,6 @@ namespace VideoLockScreen.UI
 
             // Register Views
             services.AddTransient<MainWindow>();
-
-            // Register as singleton to maintain state
-            services.AddSingleton<SystemTrayManager>();
         }
 
         /// <summary>

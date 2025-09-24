@@ -7,7 +7,6 @@
     <UseWindowsForms>true</UseWindowsForms>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <ApplicationIcon>Resources\icon.ico</ApplicationIcon>
     <AssemblyTitle>Video Lock Screen Configuration</AssemblyTitle>
     <AssemblyDescription>Configuration application for Video Lock Screen Wallpaper</AssemblyDescription>
     <AssemblyProduct>Video Lock Screen App</AssemblyProduct>
