@@ -6,6 +6,7 @@ using System.Windows.Input;
 using VideoLockScreen.Core;
 using VideoLockScreen.Core.Services;
 using VideoLockScreen.Core.Models;
+using VideoLockScreen.Core.Utilities;
 using VideoLockScreen.UI.Commands;
 using VideoLockScreen.UI.Interfaces;
 using VideoLockScreen.UI.Models;
@@ -22,6 +23,7 @@ namespace VideoLockScreen.UI.ViewModels
         private readonly IDialogService _dialogService;
         private readonly IVideoPreviewService _videoPreviewService;
         private readonly SessionMonitor _sessionMonitor;
+        private readonly VideoFileHelper _videoFileHelper;
         
         private bool _isEnabled;
         private string _statusMessage = "Ready";
@@ -39,7 +41,8 @@ namespace VideoLockScreen.UI.ViewModels
             ISystemTrayService systemTrayService,
             IDialogService dialogService,
             IVideoPreviewService videoPreviewService,
-            SessionMonitor sessionMonitor)
+            SessionMonitor sessionMonitor,
+            VideoFileHelper videoFileHelper)
         {
             _configurationService = configurationService ?? throw new ArgumentNullException(nameof(configurationService));
             _videoPlayerService = videoPlayerService ?? throw new ArgumentNullException(nameof(videoPlayerService));
@@ -47,6 +50,7 @@ namespace VideoLockScreen.UI.ViewModels
             _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
             _videoPreviewService = videoPreviewService ?? throw new ArgumentNullException(nameof(videoPreviewService));
             _sessionMonitor = sessionMonitor ?? throw new ArgumentNullException(nameof(sessionMonitor));
+            _videoFileHelper = videoFileHelper ?? throw new ArgumentNullException(nameof(videoFileHelper));
 
             InitializeCollections();
             InitializeCommands();
@@ -217,7 +221,7 @@ namespace VideoLockScreen.UI.ViewModels
             }
         }
 
-        private async Task LoadMonitorConfigurations()
+        private Task LoadMonitorConfigurations()
         {
             // This would integrate with the monitor detection service
             // For now, we'll create sample monitor configurations
@@ -244,6 +248,8 @@ namespace VideoLockScreen.UI.ViewModels
             {
                 ConnectedMonitors.Add(monitor);
             }
+            
+            return Task.CompletedTask;
         }
 
         private void LoadSystemInfo()
@@ -260,14 +266,47 @@ namespace VideoLockScreen.UI.ViewModels
         {
             var fileInfo = new FileInfo(filePath);
             
-            return new VideoFileModel
+            try
             {
-                FilePath = filePath,
-                FileName = fileInfo.Name,
-                Duration = "00:00:00", // Would be determined by media info
-                Resolution = "Unknown", // Would be determined by media info
-                ThumbnailPath = null // Would be generated
-            };
+                // Get video metadata using VideoFileHelper on background thread
+                var videoInfo = await Task.Run(async () => await _videoFileHelper.GetVideoInfoAsync(filePath));
+                
+                return new VideoFileModel
+                {
+                    FilePath = filePath,
+                    FileName = fileInfo.Name,
+                    Duration = FormatDuration(videoInfo.Duration),
+                    Resolution = $"{videoInfo.Width}x{videoInfo.Height}",
+                    FileSize = fileInfo.Length,
+                    ThumbnailPath = null, // TODO: Generate thumbnail
+                    DateAdded = DateTime.Now
+                };
+            }
+            catch (Exception ex)
+            {
+                // Log the error (for now just create a debug output)
+                System.Diagnostics.Debug.WriteLine($"Failed to get video info for {filePath}: {ex.Message}");
+                
+                // Fallback to basic file info if video analysis fails
+                return new VideoFileModel
+                {
+                    FilePath = filePath,
+                    FileName = fileInfo.Name,
+                    Duration = "Unknown",
+                    Resolution = "Unknown",
+                    FileSize = fileInfo.Length,
+                    ThumbnailPath = null,
+                    DateAdded = DateTime.Now
+                };
+            }
+        }
+        
+        private string FormatDuration(TimeSpan duration)
+        {
+            if (duration.TotalHours >= 1)
+                return duration.ToString(@"h\:mm\:ss");
+            else
+                return duration.ToString(@"m\:ss");
         }
 
         #endregion
@@ -304,25 +343,86 @@ namespace VideoLockScreen.UI.ViewModels
         {
             try
             {
+                StatusMessage = "Selecting video files...";
                 var videoFiles = await _dialogService.SelectVideoFilesAsync();
+                
                 if (videoFiles?.Any() == true)
                 {
+                    StatusMessage = "Processing selected videos...";
+                    int addedCount = 0;
+                    int skippedCount = 0;
+                    var validationErrors = new List<string>();
+
                     foreach (var filePath in videoFiles)
                     {
                         if (!VideoFiles.Any(v => v.FilePath.Equals(filePath, StringComparison.OrdinalIgnoreCase)))
                         {
-                            var videoModel = await CreateVideoFileModel(filePath);
-                            VideoFiles.Add(videoModel);
+                            try
+                            {
+                                // Validate the video file first
+                                var validation = await _videoFileHelper.ValidateVideoForLockScreenAsync(filePath);
+                                
+                                if (validation.IsValid)
+                                {
+                                    var videoModel = await CreateVideoFileModel(filePath);
+                                    VideoFiles.Add(videoModel);
+                                    addedCount++;
+                                }
+                                else
+                                {
+                                    var fileName = Path.GetFileName(filePath);
+                                    validationErrors.Add($"{fileName}: {string.Join(", ", validation.Issues)}");
+                                    skippedCount++;
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                var fileName = Path.GetFileName(filePath);
+                                validationErrors.Add($"{fileName}: {ex.Message}");
+                                skippedCount++;
+                            }
+                        }
+                        else
+                        {
+                            skippedCount++;
                         }
                     }
                     
-                    StatusMessage = $"Added {videoFiles.Count()} video file(s)";
-                    await SaveConfiguration();
+                    // Update status message with results
+                    if (addedCount > 0)
+                    {
+                        StatusMessage = $"Added {addedCount} video file(s)";
+                        if (skippedCount > 0)
+                        {
+                            StatusMessage += $", skipped {skippedCount}";
+                        }
+                        await SaveConfiguration();
+                    }
+                    else
+                    {
+                        StatusMessage = $"No valid videos added. Skipped {skippedCount} file(s)";
+                    }
+                    
+                    // Show validation errors if any
+                    if (validationErrors.Any())
+                    {
+                        var errorMessage = "Some files could not be added:\n\n" + string.Join("\n", validationErrors.Take(5));
+                        if (validationErrors.Count > 5)
+                        {
+                            errorMessage += $"\n... and {validationErrors.Count - 5} more.";
+                        }
+                        await _dialogService.ShowMessageAsync("Video Validation", errorMessage);
+                    }
+                }
+                else
+                {
+                    StatusMessage = "No files selected";
                 }
             }
             catch (Exception ex)
             {
                 StatusMessage = $"Error browsing videos: {ex.Message}";
+                await _dialogService.ShowMessageAsync("Error", $"Failed to browse videos: {ex.Message}");
             }
         }
 
@@ -330,32 +430,100 @@ namespace VideoLockScreen.UI.ViewModels
         {
             try
             {
+                StatusMessage = "Selecting folder...";
                 var folderPath = await _dialogService.SelectFolderAsync();
+                
                 if (!string.IsNullOrEmpty(folderPath))
                 {
-                    var videoExtensions = new[] { ".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv" };
+                    StatusMessage = "Scanning folder for videos...";
+                    var videoExtensions = new[] { ".mp4", ".avi", ".mkv", ".mov", ".wmv", ".flv", ".m4v", ".webm" };
                     var videoFiles = Directory.GetFiles(folderPath, "*.*", SearchOption.AllDirectories)
                         .Where(f => videoExtensions.Contains(Path.GetExtension(f).ToLowerInvariant()))
                         .ToList();
 
+                    if (!videoFiles.Any())
+                    {
+                        StatusMessage = "No video files found in the selected folder";
+                        await _dialogService.ShowMessageAsync("No Videos Found", 
+                            $"No supported video files were found in:\n{folderPath}");
+                        return;
+                    }
+
+                    StatusMessage = $"Processing {videoFiles.Count} video files...";
                     int addedCount = 0;
+                    int skippedCount = 0;
+                    var validationErrors = new List<string>();
+
                     foreach (var filePath in videoFiles)
                     {
                         if (!VideoFiles.Any(v => v.FilePath.Equals(filePath, StringComparison.OrdinalIgnoreCase)))
                         {
-                            var videoModel = await CreateVideoFileModel(filePath);
-                            VideoFiles.Add(videoModel);
-                            addedCount++;
+                            try
+                            {
+                                // Validate the video file first
+                                var validation = await _videoFileHelper.ValidateVideoForLockScreenAsync(filePath);
+                                
+                                if (validation.IsValid)
+                                {
+                                    var videoModel = await CreateVideoFileModel(filePath);
+                                    VideoFiles.Add(videoModel);
+                                    addedCount++;
+                                }
+                                else
+                                {
+                                    var fileName = Path.GetFileName(filePath);
+                                    validationErrors.Add($"{fileName}: {string.Join(", ", validation.Issues)}");
+                                    skippedCount++;
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                var fileName = Path.GetFileName(filePath);
+                                validationErrors.Add($"{fileName}: {ex.Message}");
+                                skippedCount++;
+                            }
+                        }
+                        else
+                        {
+                            skippedCount++;
                         }
                     }
                     
-                    StatusMessage = $"Added {addedCount} video file(s) from folder";
-                    await SaveConfiguration();
+                    // Update status and save configuration
+                    if (addedCount > 0)
+                    {
+                        StatusMessage = $"Added {addedCount} video file(s) from folder";
+                        if (skippedCount > 0)
+                        {
+                            StatusMessage += $", skipped {skippedCount}";
+                        }
+                        await SaveConfiguration();
+                    }
+                    else
+                    {
+                        StatusMessage = $"No valid videos added from folder. Skipped {skippedCount} file(s)";
+                    }
+                    
+                    // Show validation errors if any
+                    if (validationErrors.Any())
+                    {
+                        var errorMessage = "Some files could not be added:\n\n" + string.Join("\n", validationErrors.Take(5));
+                        if (validationErrors.Count > 5)
+                        {
+                            errorMessage += $"\n... and {validationErrors.Count - 5} more.";
+                        }
+                        await _dialogService.ShowMessageAsync("Video Validation", errorMessage);
+                    }
+                }
+                else
+                {
+                    StatusMessage = "No folder selected";
                 }
             }
             catch (Exception ex)
             {
                 StatusMessage = $"Error adding folder: {ex.Message}";
+                await _dialogService.ShowMessageAsync("Error", $"Failed to add folder: {ex.Message}");
             }
         }
 
@@ -378,19 +546,84 @@ namespace VideoLockScreen.UI.ViewModels
             }
         }
 
-        private void PlayPreview()
+        private async void PlayPreview()
         {
-            _videoPreviewService.Play();
+            try
+            {
+                // If no video is loaded in preview service, load the currently selected video
+                if (string.IsNullOrEmpty(_videoPreviewService.CurrentVideoPath))
+                {
+                    if (SelectedVideo != null)
+                    {
+                        _videoPreviewService.LoadVideo(SelectedVideo.FilePath);
+                    }
+                    else
+                    {
+                        await _dialogService.ShowMessageAsync("No Video Selected", "Please select a video file first.");
+                        return;
+                    }
+                }
+                
+                _videoPreviewService.Play();
+            }
+            catch (Exception ex)
+            {
+                await _dialogService.ShowMessageAsync("Preview Error", $"Failed to play video preview: {ex.Message}");
+            }
         }
 
-        private void PausePreview()
+        private async void PausePreview()
         {
-            _videoPreviewService.Pause();
+            try
+            {
+                // If no video is loaded in preview service, load the currently selected video first
+                if (string.IsNullOrEmpty(_videoPreviewService.CurrentVideoPath))
+                {
+                    if (SelectedVideo != null)
+                    {
+                        _videoPreviewService.LoadVideo(SelectedVideo.FilePath);
+                        return; // Don't pause immediately after loading
+                    }
+                    else
+                    {
+                        await _dialogService.ShowMessageAsync("No Video Selected", "Please select a video file first.");
+                        return;
+                    }
+                }
+                
+                _videoPreviewService.Pause();
+            }
+            catch (Exception ex)
+            {
+                await _dialogService.ShowMessageAsync("Preview Error", $"Failed to pause video preview: {ex.Message}");
+            }
         }
 
-        private void StopPreview()
+        private async void StopPreview()
         {
-            _videoPreviewService.Stop();
+            try
+            {
+                // If no video is loaded in preview service, load the currently selected video first
+                if (string.IsNullOrEmpty(_videoPreviewService.CurrentVideoPath))
+                {
+                    if (SelectedVideo != null)
+                    {
+                        _videoPreviewService.LoadVideo(SelectedVideo.FilePath);
+                        return; // Don't stop immediately after loading
+                    }
+                    else
+                    {
+                        await _dialogService.ShowMessageAsync("No Video Selected", "Please select a video file first.");
+                        return;
+                    }
+                }
+                
+                _videoPreviewService.Stop();
+            }
+            catch (Exception ex)
+            {
+                await _dialogService.ShowMessageAsync("Preview Error", $"Failed to stop video preview: {ex.Message}");
+            }
         }
 
         private async void TestLockScreen()
