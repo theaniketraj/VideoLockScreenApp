@@ -44,20 +44,18 @@ namespace VideoLockScreen.UI.Services
         {
             return await Application.Current.Dispatcher.InvokeAsync(() =>
             {
-                // Using a folder browser dialog would require additional NuGet packages
-                // For now, we'll use a simplified approach with OpenFileDialog
-                var openFileDialog = new OpenFileDialog
+                // Use Windows Forms FolderBrowserDialog for proper folder selection
+                using var folderDialog = new System.Windows.Forms.FolderBrowserDialog
                 {
-                    Title = "Select Folder Containing Videos",
-                    Filter = "Folders|*.folder",
-                    CheckFileExists = false,
-                    CheckPathExists = true,
-                    FileName = "Select Folder"
+                    Description = "Select folder containing video files",
+                    UseDescriptionForTitle = true,
+                    ShowNewFolderButton = true
                 };
 
-                if (openFileDialog.ShowDialog() == true)
+                var result = folderDialog.ShowDialog();
+                if (result == System.Windows.Forms.DialogResult.OK && !string.IsNullOrWhiteSpace(folderDialog.SelectedPath))
                 {
-                    return System.IO.Path.GetDirectoryName(openFileDialog.FileName);
+                    return folderDialog.SelectedPath;
                 }
 
                 return null;
