@@ -1,6 +1,13 @@
+using System.IO;
 using System.Windows;
 using Microsoft.Win32;
 using VideoLockScreen.UI.Interfaces;
+using Application = System.Windows.Application;
+using MessageBox = System.Windows.MessageBox;
+using MessageBoxButton = System.Windows.MessageBoxButton;
+using MessageBoxImage = System.Windows.MessageBoxImage;
+using MessageBoxResult = System.Windows.MessageBoxResult;
+using OpenFileDialog = Microsoft.Win32.OpenFileDialog;
 
 namespace VideoLockScreen.UI.Services
 {

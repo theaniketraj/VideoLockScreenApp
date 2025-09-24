@@ -1,3 +1,4 @@
+using System.IO;
 using VideoLockScreen.UI.Interfaces;
 
 namespace VideoLockScreen.UI.Services

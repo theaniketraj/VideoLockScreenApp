@@ -9,7 +9,6 @@ namespace VideoLockScreen.UI.Services
     public class SystemTrayService : ISystemTrayService, IDisposable
     {
         private TaskbarIcon? _trayIcon;
-        private MainWindow? _mainWindow;
         private bool _disposed = false;
 
         public event EventHandler? TrayIconClicked;
