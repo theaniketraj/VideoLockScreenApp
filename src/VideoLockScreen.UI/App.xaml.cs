@@ -85,6 +85,7 @@ namespace VideoLockScreen.UI
 
             // Register Views
             services.AddTransient<MainWindow>();
+            services.AddTransient<VideoPreviewWindow>();
         }
 
         /// <summary>

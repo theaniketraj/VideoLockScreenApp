@@ -239,6 +239,14 @@
         <Setter Property="VerticalContentAlignment" Value="Center"/>
     </Style>
 
+    <!-- Modern Button Style (used by video preview) -->
+    <Style x:Key="ModernButtonStyle" BasedOn="{StaticResource BaseButtonStyle}" TargetType="Button">
+        <Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
+        <Setter Property="Foreground" Value="White"/>
+        <Setter Property="Padding" Value="12,8"/>
+        <Setter Property="MinWidth" Value="80"/>
+    </Style>
+
     <!-- Slider Thumb Style (must be defined before Slider style that uses it) -->
     <Style x:Key="SliderThumbStyle" TargetType="Thumb">
         <Setter Property="Template">
@@ -262,6 +270,68 @@
                         <Rectangle Fill="{TemplateBinding Background}" Height="4" RadiusX="2" RadiusY="2"/>
                         <Rectangle Fill="{TemplateBinding Foreground}" Height="4" RadiusX="2" RadiusY="2"/>
                         <Thumb Name="Thumb" Style="{StaticResource SliderThumbStyle}"/>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Modern Slider Style (used by video preview) -->
+    <Style x:Key="ModernSliderStyle" TargetType="Slider">
+        <Setter Property="Background" Value="{StaticResource BorderBrush}"/>
+        <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
+        <Setter Property="Height" Value="6"/>
+        <Setter Property="Margin" Value="0,5"/>
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Slider">
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto" MinHeight="{TemplateBinding MinHeight}"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        <TickBar x:Name="TopTick" Grid.Row="0" Visibility="Collapsed"/>
+                        
+                        <!-- Track Background -->
+                        <Border x:Name="TrackBackground" Grid.Row="1" Height="6" Background="{StaticResource BorderBrush}" 
+                                CornerRadius="3" Margin="5,0"/>
+                        
+                        <!-- Track -->
+                        <Track Grid.Row="1" x:Name="PART_Track">
+                            <Track.DecreaseRepeatButton>
+                                <RepeatButton Style="{x:Null}" Command="Slider.DecreaseLarge">
+                                    <RepeatButton.Template>
+                                        <ControlTemplate TargetType="RepeatButton">
+                                            <Border Background="{StaticResource PrimaryBrush}" Height="6" 
+                                                    CornerRadius="3,0,0,3" Margin="5,0,0,0"/>
+                                        </ControlTemplate>
+                                    </RepeatButton.Template>
+                                </RepeatButton>
+                            </Track.DecreaseRepeatButton>
+                            <Track.Thumb>
+                                <Thumb x:Name="Thumb">
+                                    <Thumb.Template>
+                                        <ControlTemplate TargetType="Thumb">
+                                            <Ellipse Fill="{StaticResource PrimaryBrush}" 
+                                                     Width="16" Height="16" 
+                                                     Stroke="White" StrokeThickness="2"/>
+                                        </ControlTemplate>
+                                    </Thumb.Template>
+                                </Thumb>
+                            </Track.Thumb>
+                            <Track.IncreaseRepeatButton>
+                                <RepeatButton Style="{x:Null}" Command="Slider.IncreaseLarge">
+                                    <RepeatButton.Template>
+                                        <ControlTemplate TargetType="RepeatButton">
+                                            <Border Background="Transparent"/>
+                                        </ControlTemplate>
+                                    </RepeatButton.Template>
+                                </RepeatButton>
+                            </Track.IncreaseRepeatButton>
+                        </Track>
+                        
+                        <TickBar x:Name="BottomTick" Grid.Row="2" Visibility="Collapsed"/>
                     </Grid>
                 </ControlTemplate>
             </Setter.Value>

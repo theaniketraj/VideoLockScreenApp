@@ -28,6 +28,9 @@ namespace VideoLockScreen.UI.Interfaces
         void Pause();
         void Stop();
         void SetVolume(double volume);
+        bool IsPlaying { get; }
+        string? CurrentVideoPath { get; }
+        double Volume { get; }
         event EventHandler<string>? VideoLoaded;
         event EventHandler? PlaybackStarted;
         event EventHandler? PlaybackPaused;
