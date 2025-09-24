@@ -1,6 +1,7 @@
 using System.Windows;
 using VideoLockScreen.UI.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
+using Application = System.Windows.Application;
 
 namespace VideoLockScreen.UI.Views
 {
@@ -14,8 +15,7 @@ namespace VideoLockScreen.UI.Views
             InitializeComponent();
             
             // Get ViewModel from DI container
-            var app = (App)Application.Current;
-            DataContext = app.ServiceProvider.GetRequiredService<MainWindowViewModel>();
+            DataContext = App.Services.GetRequiredService<MainWindowViewModel>();
             
             // Handle window state changes for system tray
             StateChanged += MainWindow_StateChanged;

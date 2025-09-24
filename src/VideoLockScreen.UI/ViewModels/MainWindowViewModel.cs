@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using VideoLockScreen.Core;
@@ -134,9 +135,9 @@ namespace VideoLockScreen.UI.ViewModels
         }
 
         // Service Status Properties
-        public string ServiceStatusText => _sessionMonitor.IsRunning ? "Service Running" : "Service Stopped";
-        public Brush ServiceStatusColor => _sessionMonitor.IsRunning ? Brushes.Green : Brushes.Red;
-        public string ServiceActionText => _sessionMonitor.IsRunning ? "Stop Service" : "Start Service";
+        public string ServiceStatusText => _sessionMonitor.IsMonitoring ? "Service Running" : "Service Stopped";
+        public Brush ServiceStatusColor => _sessionMonitor.IsMonitoring ? Brushes.Green : Brushes.Red;
+        public string ServiceActionText => _sessionMonitor.IsMonitoring ? "Stop Service" : "Start Service";
 
         #endregion
 
@@ -188,7 +189,8 @@ namespace VideoLockScreen.UI.ViewModels
         {
             try
             {
-                var config = await _configurationService.LoadConfigurationAsync();
+                await _configurationService.LoadSettingsAsync();
+                var config = _configurationService.Settings;
                 
                 IsEnabled = config.IsEnabled;
                 ShowOnAllMonitors = config.ShowOnAllMonitors;
@@ -196,15 +198,12 @@ namespace VideoLockScreen.UI.ViewModels
                 Volume = config.Volume;
                 LoopCount = config.LoopCount;
 
-                // Load video files
+                // Load video file
                 VideoFiles.Clear();
-                foreach (var videoPath in config.VideoFiles)
+                if (!string.IsNullOrEmpty(config.VideoFilePath) && File.Exists(config.VideoFilePath))
                 {
-                    if (File.Exists(videoPath))
-                    {
-                        var videoModel = await CreateVideoFileModel(videoPath);
-                        VideoFiles.Add(videoModel);
-                    }
+                    var videoModel = await CreateVideoFileModel(config.VideoFilePath);
+                    VideoFiles.Add(videoModel);
                 }
 
                 // Load monitor configurations
@@ -412,18 +411,18 @@ namespace VideoLockScreen.UI.ViewModels
             }
         }
 
-        private async void ServiceAction()
+        private void ServiceAction()
         {
             try
             {
-                if (_sessionMonitor.IsRunning)
+                if (_sessionMonitor.IsMonitoring)
                 {
-                    await _sessionMonitor.StopAsync();
+                    _sessionMonitor.StopMonitoring();
                     StatusMessage = "Service stopped";
                 }
                 else
                 {
-                    await _sessionMonitor.StartAsync();
+                    _sessionMonitor.StartMonitoring();
                     StatusMessage = "Service started";
                 }
                 
@@ -453,18 +452,22 @@ namespace VideoLockScreen.UI.ViewModels
         {
             try
             {
-                var config = new LockScreenConfiguration
+                var config = _configurationService.Settings;
+                
+                config.IsEnabled = IsEnabled;
+                config.VideoFilePath = VideoFiles.FirstOrDefault()?.FilePath ?? string.Empty;
+                config.ShowOnAllMonitors = ShowOnAllMonitors;
+                config.AudioEnabled = AudioEnabled;
+                config.Volume = Volume;
+                config.LoopCount = LoopCount;
+                
+                // Convert ScalingMode string to enum
+                if (Enum.TryParse<VideoScalingMode>(ScalingMode.Replace(" ", ""), out var mode))
                 {
-                    IsEnabled = IsEnabled,
-                    VideoFiles = VideoFiles.Select(v => v.FilePath).ToList(),
-                    ShowOnAllMonitors = ShowOnAllMonitors,
-                    AudioEnabled = AudioEnabled,
-                    Volume = Volume,
-                    LoopCount = LoopCount,
-                    ScalingMode = ScalingMode
-                };
+                    config.ScalingMode = mode;
+                }
 
-                await _configurationService.SaveConfigurationAsync(config);
+                await _configurationService.SaveSettingsAsync();
             }
             catch (Exception ex)
             {
