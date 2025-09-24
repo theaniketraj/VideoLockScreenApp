@@ -28,6 +28,11 @@ namespace VideoLockScreen.UI.Commands
         {
             _execute();
         }
+
+        public void RaiseCanExecuteChanged()
+        {
+            CommandManager.InvalidateRequerySuggested();
+        }
     }
 
     public class RelayCommand<T> : ICommand
@@ -55,6 +60,11 @@ namespace VideoLockScreen.UI.Commands
         public void Execute(object? parameter)
         {
             _execute((T?)parameter);
+        }
+
+        public void RaiseCanExecuteChanged()
+        {
+            CommandManager.InvalidateRequerySuggested();
         }
     }
 }

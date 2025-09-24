@@ -79,6 +79,8 @@ namespace VideoLockScreen.UI
             services.AddSingleton<ISystemTrayService, SystemTrayService>();
             services.AddSingleton<IDialogService, DialogService>();
             services.AddSingleton<IVideoPreviewService, VideoPreviewService>();
+            services.AddSingleton<ILockScreenService, LockScreenService>();
+            services.AddSingleton<IHotkeyService, HotkeyService>();
 
             // Register ViewModels
             services.AddTransient<MainWindowViewModel>();
@@ -86,6 +88,7 @@ namespace VideoLockScreen.UI
             // Register Views
             services.AddTransient<MainWindow>();
             services.AddTransient<VideoPreviewWindow>();
+            services.AddTransient<LockScreenWindow>();
         }
 
         /// <summary>
