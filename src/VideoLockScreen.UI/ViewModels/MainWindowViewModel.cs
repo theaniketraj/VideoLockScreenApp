@@ -10,8 +10,10 @@ using VideoLockScreen.Core.Utilities;
 using VideoLockScreen.UI.Commands;
 using VideoLockScreen.UI.Interfaces;
 using VideoLockScreen.UI.Models;
+using VideoLockScreen.UI.Services;
 using Brush = System.Windows.Media.Brush;
 using Brushes = System.Windows.Media.Brushes;
+using System.Windows;
 
 namespace VideoLockScreen.UI.ViewModels
 {
@@ -22,6 +24,8 @@ namespace VideoLockScreen.UI.ViewModels
         private readonly ISystemTrayService _systemTrayService;
         private readonly IDialogService _dialogService;
         private readonly IVideoPreviewService _videoPreviewService;
+        private readonly ILockScreenService _lockScreenService;
+        private readonly IHotkeyService _hotkeyService;
         private readonly SessionMonitor _sessionMonitor;
         private readonly VideoFileHelper _videoFileHelper;
         
@@ -34,6 +38,9 @@ namespace VideoLockScreen.UI.ViewModels
         private int _loopCount = -1;
         private bool _audioEnabled = false;
         private double _volume = 0.5;
+        private bool _isLockScreenActive;
+        private string _lockScreenStatusMessage = "Ready to activate";
+        private bool _canActivateLockScreen = true;
 
         public MainWindowViewModel(
             IConfigurationService configurationService,
@@ -41,6 +48,8 @@ namespace VideoLockScreen.UI.ViewModels
             ISystemTrayService systemTrayService,
             IDialogService dialogService,
             IVideoPreviewService videoPreviewService,
+            ILockScreenService lockScreenService,
+            IHotkeyService hotkeyService,
             SessionMonitor sessionMonitor,
             VideoFileHelper videoFileHelper)
         {
@@ -49,11 +58,14 @@ namespace VideoLockScreen.UI.ViewModels
             _systemTrayService = systemTrayService ?? throw new ArgumentNullException(nameof(systemTrayService));
             _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
             _videoPreviewService = videoPreviewService ?? throw new ArgumentNullException(nameof(videoPreviewService));
+            _lockScreenService = lockScreenService ?? throw new ArgumentNullException(nameof(lockScreenService));
+            _hotkeyService = hotkeyService ?? throw new ArgumentNullException(nameof(hotkeyService));
             _sessionMonitor = sessionMonitor ?? throw new ArgumentNullException(nameof(sessionMonitor));
             _videoFileHelper = videoFileHelper ?? throw new ArgumentNullException(nameof(videoFileHelper));
 
             InitializeCollections();
             InitializeCommands();
+            InitializeLockScreenServices();
             LoadConfiguration();
             LoadSystemInfo();
         }
@@ -143,6 +155,37 @@ namespace VideoLockScreen.UI.ViewModels
         public Brush ServiceStatusColor => _sessionMonitor.IsMonitoring ? Brushes.Green : Brushes.Red;
         public string ServiceActionText => _sessionMonitor.IsMonitoring ? "Stop Service" : "Start Service";
 
+        // Lock Screen Properties
+        public bool IsLockScreenActive
+        {
+            get => _isLockScreenActive;
+            set
+            {
+                if (SetProperty(ref _isLockScreenActive, value))
+                {
+                    OnPropertyChanged(nameof(LockScreenStatusText));
+                    OnPropertyChanged(nameof(LockScreenStatusColor));
+                    OnPropertyChanged(nameof(ActivationButtonText));
+                }
+            }
+        }
+
+        public string LockScreenStatusMessage
+        {
+            get => _lockScreenStatusMessage;
+            set => SetProperty(ref _lockScreenStatusMessage, value);
+        }
+
+        public bool CanActivateLockScreen
+        {
+            get => _canActivateLockScreen;
+            set => SetProperty(ref _canActivateLockScreen, value);
+        }
+
+        public string LockScreenStatusText => IsLockScreenActive ? "Lock Screen Active" : "Lock Screen Inactive";
+        public Brush LockScreenStatusColor => IsLockScreenActive ? Brushes.Red : Brushes.Green;
+        public string ActivationButtonText => IsLockScreenActive ? "Deactivate Lock Screen" : "Activate Lock Screen";
+
         #endregion
 
         #region Commands
@@ -157,6 +200,8 @@ namespace VideoLockScreen.UI.ViewModels
         public ICommand PausePreviewCommand { get; private set; } = null!;
         public ICommand StopPreviewCommand { get; private set; } = null!;
         public ICommand TestLockScreenCommand { get; private set; } = null!;
+        public ICommand ActivateLockScreenCommand { get; private set; } = null!;
+        public ICommand DeactivateLockScreenCommand { get; private set; } = null!;
         public ICommand ApplySettingsCommand { get; private set; } = null!;
         public ICommand ServiceActionCommand { get; private set; } = null!;
         public ICommand MinimizeToTrayCommand { get; private set; } = null!;
@@ -183,6 +228,8 @@ namespace VideoLockScreen.UI.ViewModels
             PausePreviewCommand = new RelayCommand(PausePreview);
             StopPreviewCommand = new RelayCommand(StopPreview);
             TestLockScreenCommand = new RelayCommand(TestLockScreen);
+            ActivateLockScreenCommand = new RelayCommand(ActivateLockScreen, CanExecuteActivateLockScreen);
+            DeactivateLockScreenCommand = new RelayCommand(DeactivateLockScreen, CanExecuteDeactivateLockScreen);
             ApplySettingsCommand = new RelayCommand(ApplySettings);
             ServiceActionCommand = new RelayCommand(ServiceAction);
             MinimizeToTrayCommand = new RelayCommand(MinimizeToTray);
@@ -721,6 +768,190 @@ namespace VideoLockScreen.UI.ViewModels
                 StatusMessage = $"Error saving configuration: {ex.Message}";
             }
         }
+
+        private void InitializeLockScreenServices()
+        {
+            try
+            {
+                // Subscribe to lock screen service events
+                _lockScreenService.LockScreenActivated += OnLockScreenActivated;
+                _lockScreenService.LockScreenDeactivated += OnLockScreenDeactivated;
+                _lockScreenService.LockScreenError += OnLockScreenError;
+
+                // Subscribe to hotkey service events
+                _hotkeyService.EmergencyExitRequested += OnEmergencyExitRequested;
+                _hotkeyService.ActivationRequested += OnActivationRequested;
+
+                // Update initial state
+                IsLockScreenActive = _lockScreenService.IsActive;
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Error initializing lock screen services: {ex.Message}";
+            }
+        }
+
+        #region Lock Screen Commands
+
+        private async void ActivateLockScreen()
+        {
+            try
+            {
+                if (IsLockScreenActive)
+                {
+                    await DeactivateLockScreenInternal();
+                    return;
+                }
+
+                if (VideoFiles.Count == 0)
+                {
+                    LockScreenStatusMessage = "No videos available. Please add videos first.";
+                    return;
+                }
+
+                var selectedVideo = SelectedVideo ?? VideoFiles.FirstOrDefault();
+                if (selectedVideo == null || !File.Exists(selectedVideo.FilePath))
+                {
+                    LockScreenStatusMessage = "Selected video file not found.";
+                    return;
+                }
+
+                LockScreenStatusMessage = "Activating lock screen...";
+                CanActivateLockScreen = false;
+
+                // Create settings from current configuration
+                var settings = new VideoLockScreenSettings
+                {
+                    VideoFilePath = selectedVideo.FilePath,
+                    ShowOnAllMonitors = ShowOnAllMonitors,
+                    ScalingMode = ScalingMode switch
+                    {
+                        "Stretch to Fill" => VideoScalingMode.Stretch,
+                        "Maintain Aspect Ratio" => VideoScalingMode.Uniform,
+                        "Original Size" => VideoScalingMode.None,
+                        _ => VideoScalingMode.UniformToFill
+                    },
+                    AudioEnabled = AudioEnabled,
+                    Volume = Volume,
+                    LoopCount = LoopCount,
+                    IsEnabled = true,
+                    // Additional settings can be configured here
+                };
+
+                var success = await _lockScreenService.ActivateLockScreenAsync(selectedVideo.FilePath, settings);
+                
+                if (!success)
+                {
+                    LockScreenStatusMessage = "Failed to activate lock screen.";
+                    CanActivateLockScreen = true;
+                }
+            }
+            catch (Exception ex)
+            {
+                LockScreenStatusMessage = $"Error activating lock screen: {ex.Message}";
+                CanActivateLockScreen = true;
+            }
+        }
+
+        private bool CanExecuteActivateLockScreen()
+        {
+            return CanActivateLockScreen && VideoFiles.Count > 0;
+        }
+
+        private async void DeactivateLockScreen()
+        {
+            await DeactivateLockScreenInternal();
+        }
+
+        private async Task DeactivateLockScreenInternal()
+        {
+            try
+            {
+                if (!IsLockScreenActive)
+                {
+                    return;
+                }
+
+                LockScreenStatusMessage = "Deactivating lock screen...";
+                
+                var success = await _lockScreenService.DeactivateLockScreenAsync();
+                
+                if (!success)
+                {
+                    LockScreenStatusMessage = "Failed to deactivate lock screen.";
+                }
+            }
+            catch (Exception ex)
+            {
+                LockScreenStatusMessage = $"Error deactivating lock screen: {ex.Message}";
+            }
+        }
+
+        private bool CanExecuteDeactivateLockScreen()
+        {
+            return IsLockScreenActive;
+        }
+
+        #endregion
+
+        #region Lock Screen Event Handlers
+
+        private void OnLockScreenActivated(object? sender, LockScreenActivatedEventArgs e)
+        {
+            System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                IsLockScreenActive = true;
+                LockScreenStatusMessage = $"Lock screen active with video: {Path.GetFileName(e.VideoPath)}";
+                CanActivateLockScreen = true;
+                
+                // Update command states
+                ((RelayCommand)ActivateLockScreenCommand).RaiseCanExecuteChanged();
+                ((RelayCommand)DeactivateLockScreenCommand).RaiseCanExecuteChanged();
+            });
+        }
+
+        private void OnLockScreenDeactivated(object? sender, LockScreenDeactivatedEventArgs e)
+        {
+            System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                IsLockScreenActive = false;
+                LockScreenStatusMessage = $"Lock screen deactivated ({e.Reason})";
+                CanActivateLockScreen = true;
+                
+                // Update command states
+                ((RelayCommand)ActivateLockScreenCommand).RaiseCanExecuteChanged();
+                ((RelayCommand)DeactivateLockScreenCommand).RaiseCanExecuteChanged();
+            });
+        }
+
+        private void OnLockScreenError(object? sender, LockScreenErrorEventArgs e)
+        {
+            System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+            {
+                IsLockScreenActive = false;
+                LockScreenStatusMessage = $"Lock screen error: {e.Message}";
+                CanActivateLockScreen = true;
+                
+                // Update command states
+                ((RelayCommand)ActivateLockScreenCommand).RaiseCanExecuteChanged();
+                ((RelayCommand)DeactivateLockScreenCommand).RaiseCanExecuteChanged();
+            });
+        }
+
+        private async void OnEmergencyExitRequested(object? sender, EventArgs e)
+        {
+            await _lockScreenService.ForceDeactivateAsync();
+        }
+
+        private async void OnActivationRequested(object? sender, EventArgs e)
+        {
+            if (!IsLockScreenActive)
+            {
+                ActivateLockScreen();
+            }
+        }
+
+        #endregion
 
         #endregion
 
