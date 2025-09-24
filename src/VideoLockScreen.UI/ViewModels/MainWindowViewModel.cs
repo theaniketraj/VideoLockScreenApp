@@ -16,8 +16,8 @@ namespace VideoLockScreen.UI.ViewModels
 {
     public class MainWindowViewModel : INotifyPropertyChanged
     {
-        private readonly ConfigurationService _configurationService;
-        private readonly VideoPlayerService _videoPlayerService;
+        private readonly IConfigurationService _configurationService;
+        private readonly IVideoPlayerService _videoPlayerService;
         private readonly ISystemTrayService _systemTrayService;
         private readonly IDialogService _dialogService;
         private readonly IVideoPreviewService _videoPreviewService;
@@ -34,8 +34,8 @@ namespace VideoLockScreen.UI.ViewModels
         private double _volume = 0.5;
 
         public MainWindowViewModel(
-            ConfigurationService configurationService,
-            VideoPlayerService videoPlayerService,
+            IConfigurationService configurationService,
+            IVideoPlayerService videoPlayerService,
             ISystemTrayService systemTrayService,
             IDialogService dialogService,
             IVideoPreviewService videoPreviewService,
@@ -276,14 +276,28 @@ namespace VideoLockScreen.UI.ViewModels
 
         private void ToggleEnabled()
         {
-            IsEnabled = !IsEnabled;
-            // Save configuration change
-            _ = Task.Run(SaveConfiguration);
+            try
+            {
+                IsEnabled = !IsEnabled;
+                // Save configuration change
+                _ = Task.Run(SaveConfiguration);
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Error toggling enabled state: {ex.Message}";
+            }
         }
 
         private void OpenSettings()
         {
-            _dialogService.ShowSettings();
+            try
+            {
+                _dialogService.ShowSettings();
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Error opening settings: {ex.Message}";
+            }
         }
 
         private async void BrowseVideos()

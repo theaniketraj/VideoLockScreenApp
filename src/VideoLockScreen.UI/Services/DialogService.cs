@@ -15,7 +15,7 @@ namespace VideoLockScreen.UI.Services
     {
         public async Task<IEnumerable<string>?> SelectVideoFilesAsync()
         {
-            return await Task.Run(() =>
+            return await Application.Current.Dispatcher.InvokeAsync(() =>
             {
                 var openFileDialog = new OpenFileDialog
                 {
@@ -42,7 +42,7 @@ namespace VideoLockScreen.UI.Services
 
         public async Task<string?> SelectFolderAsync()
         {
-            return await Task.Run(() =>
+            return await Application.Current.Dispatcher.InvokeAsync(() =>
             {
                 // Using a folder browser dialog would require additional NuGet packages
                 // For now, we'll use a simplified approach with OpenFileDialog
@@ -66,24 +66,18 @@ namespace VideoLockScreen.UI.Services
 
         public async Task ShowMessageAsync(string title, string message)
         {
-            await Task.Run(() =>
+            await Application.Current.Dispatcher.InvokeAsync(() =>
             {
-                Application.Current.Dispatcher.Invoke(() =>
-                {
-                    MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Information);
-                });
+                MessageBox.Show(message, title, MessageBoxButton.OK, MessageBoxImage.Information);
             });
         }
 
         public async Task<bool> ShowConfirmationAsync(string title, string message)
         {
-            return await Task.Run(() =>
+            return await Application.Current.Dispatcher.InvokeAsync(() =>
             {
-                return Application.Current.Dispatcher.Invoke(() =>
-                {
-                    var result = MessageBox.Show(message, title, MessageBoxButton.YesNo, MessageBoxImage.Question);
-                    return result == MessageBoxResult.Yes;
-                });
+                var result = MessageBox.Show(message, title, MessageBoxButton.YesNo, MessageBoxImage.Question);
+                return result == MessageBoxResult.Yes;
             });
         }
 
@@ -91,7 +85,10 @@ namespace VideoLockScreen.UI.Services
         {
             // This would open a settings dialog
             // For now, we'll show a placeholder message
-            MessageBox.Show("Settings dialog would open here.", "Settings", MessageBoxButton.OK, MessageBoxImage.Information);
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                MessageBox.Show("Settings dialog would open here.", "Settings", MessageBoxButton.OK, MessageBoxImage.Information);
+            });
         }
 
         public void ShowAbout()

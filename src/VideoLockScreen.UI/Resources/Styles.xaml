@@ -24,6 +24,7 @@
     <SolidColorBrush x:Key="WarningBrush" Color="{StaticResource WarningColor}"/>
     <SolidColorBrush x:Key="SuccessBrush" Color="{StaticResource SuccessColor}"/>
     <SolidColorBrush x:Key="TextPrimaryBrush" Color="{StaticResource TextPrimaryColor}"/>
+    <SolidColorBrush x:Key="TextSecondaryBrush" Color="{StaticResource TextSecondaryColor}"/>
     <SolidColorBrush x:Key="SecondaryTextBrush" Color="{StaticResource TextSecondaryColor}"/>
     <SolidColorBrush x:Key="BorderBrush" Color="{StaticResource BorderColor}"/>
 
@@ -185,7 +186,8 @@
             <Setter.Value>
                 <ControlTemplate TargetType="TabItem">
                     <Grid>
-                        <Border Background="{TemplateBinding Background}"
+                        <Border x:Name="TabBorder"
+                                Background="{TemplateBinding Background}"
                                 BorderThickness="0,0,0,2"
                                 BorderBrush="Transparent">
                             <ContentPresenter x:Name="ContentSite"
@@ -198,7 +200,7 @@
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsSelected" Value="True">
                             <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
-                            <Setter TargetName="ContentSite" Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
+                            <Setter TargetName="TabBorder" Property="BorderBrush" Value="{StaticResource PrimaryBrush}"/>
                         </Trigger>
                         <Trigger Property="IsMouseOver" Value="True">
                             <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
@@ -237,6 +239,17 @@
         <Setter Property="VerticalContentAlignment" Value="Center"/>
     </Style>
 
+    <!-- Slider Thumb Style (must be defined before Slider style that uses it) -->
+    <Style x:Key="SliderThumbStyle" TargetType="Thumb">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Thumb">
+                    <Ellipse Fill="{StaticResource PrimaryBrush}" Width="20" Height="20" Stroke="White" StrokeThickness="2"/>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- Slider Style -->
     <Style TargetType="Slider">
         <Setter Property="Background" Value="{StaticResource BorderBrush}"/>
@@ -250,16 +263,6 @@
                         <Rectangle Fill="{TemplateBinding Foreground}" Height="4" RadiusX="2" RadiusY="2"/>
                         <Thumb Name="Thumb" Style="{StaticResource SliderThumbStyle}"/>
                     </Grid>
-                </ControlTemplate>
-            </Setter.Value>
-        </Setter>
-    </Style>
-
-    <Style x:Key="SliderThumbStyle" TargetType="Thumb">
-        <Setter Property="Template">
-            <Setter.Value>
-                <ControlTemplate TargetType="Thumb">
-                    <Ellipse Fill="{StaticResource PrimaryBrush}" Width="20" Height="20" Stroke="White" StrokeThickness="2"/>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>
