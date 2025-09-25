@@ -121,8 +121,13 @@ namespace VideoLockScreen.UI.Views
             {
                 if (VideoPlayer.Source != null)
                 {
-                    // The video will start playing when MediaOpened event fires
                     _logger.LogInformation("Starting video playback");
+                    ShowLoadingOverlay(true);
+                    
+                    // Try to start playback immediately
+                    // MediaOpened event will handle the actual play() call and hide loading
+                    VideoPlayer.LoadedBehavior = MediaState.Manual;
+                    VideoPlayer.UnloadedBehavior = MediaState.Stop;
                 }
                 else
                 {

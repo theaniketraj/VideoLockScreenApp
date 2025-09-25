@@ -39,8 +39,6 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal">
-                    <Button Content="Settings" Style="{StaticResource HeaderButtonStyle}" 
-                            Command="{Binding OpenSettingsCommand}" Margin="0,0,10,0"/>
                     <ToggleButton Content="Enable" Style="{StaticResource EnableToggleStyle}"
                                   IsChecked="{Binding IsEnabled}" 
                                   Command="{Binding ToggleEnabledCommand}"/>

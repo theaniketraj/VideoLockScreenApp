@@ -81,6 +81,7 @@ namespace VideoLockScreen.UI.Services
                 _previewWindow.Closed += (s, e) => _previewWindow = null;
             }
             
+            // Always load the current video path to refresh the preview
             if (!string.IsNullOrEmpty(_currentVideoPath))
             {
                 _previewWindow.LoadVideo(_currentVideoPath);
