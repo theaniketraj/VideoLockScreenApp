@@ -816,8 +816,38 @@ namespace VideoLockScreen.UI.ViewModels
                     return;
                 }
 
-                LockScreenStatusMessage = "Activating lock screen...";
+                // STEP 1: Pre-validate video in main app (safe)
+                LockScreenStatusMessage = "Validating video file...";
                 CanActivateLockScreen = false;
+                
+                var validationResult = await _lockScreenService.ValidateVideoAsync(selectedVideo.FilePath);
+                
+                if (!validationResult.IsValid)
+                {
+                    LockScreenStatusMessage = $"Video validation failed: {validationResult.ErrorMessage}";
+                    CanActivateLockScreen = true;
+                    return;
+                }
+
+                // STEP 2: Show user the validation results and confirm
+                var confirmMessage = $"Video validated successfully!\n\n" +
+                                   $"Duration: {validationResult.Duration:mm\\:ss}\n" +
+                                   $"Resolution: {validationResult.Resolution}\n" +
+                                   $"Size: {validationResult.FileSize / (1024 * 1024):F1} MB\n\n" +
+                                   $"Proceed with lock screen activation?\n\n" +
+                                   $"Emergency Exit: Ctrl+Alt+Shift+F12";
+
+                var proceed = await _dialogService.ShowConfirmationAsync("Activate Lock Screen", confirmMessage);
+                
+                if (!proceed)
+                {
+                    LockScreenStatusMessage = "Lock screen activation cancelled.";
+                    CanActivateLockScreen = true;
+                    return;
+                }
+
+                // STEP 3: Only activate lock screen with validated video
+                LockScreenStatusMessage = "Activating lock screen (video ready)...";
 
                 // Create settings from current configuration
                 var settings = new VideoLockScreenSettings

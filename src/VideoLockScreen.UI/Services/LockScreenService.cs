@@ -54,6 +54,11 @@ namespace VideoLockScreen.UI.Services
         /// Immediately deactivates lock screen (emergency exit)
         /// </summary>
         Task ForceDeactivateAsync();
+
+        /// <summary>
+        /// Pre-validates a video file for lock screen use
+        /// </summary>
+        Task<VideoValidationResult> ValidateVideoAsync(string videoPath);
     }
 
     /// <summary>
@@ -94,7 +99,7 @@ namespace VideoLockScreen.UI.Services
         }
 
         /// <summary>
-        /// Activates the lock screen with the specified video and settings
+        /// Activates the lock screen with the specified video and settings (video is pre-validated)
         /// </summary>
         public async Task<bool> ActivateLockScreenAsync(string videoPath, VideoLockScreenSettings settings)
         {
@@ -112,7 +117,7 @@ namespace VideoLockScreen.UI.Services
                     return false;
                 }
 
-                _logger.LogInformation("Activating lock screen with video: {VideoPath}", videoPath);
+                _logger.LogInformation("Activating lock screen with pre-validated video: {VideoPath}", videoPath);
 
                 // Store current settings
                 _currentSettings = settings;
@@ -125,21 +130,20 @@ namespace VideoLockScreen.UI.Services
                     return window;
                 });
 
-                // Load video
-                var videoLoaded = await _lockScreenWindow.LoadVideoAsync(videoPath, settings);
-                if (!videoLoaded)
+                // Configure video before showing window (safe since video is pre-validated)
+                await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
                 {
-                    await CleanupLockScreenWindow();
-                    return false;
-                }
+                    _lockScreenWindow.ConfigureVideo(videoPath, settings);
+                });
 
-                // Show lock screen window
+                // Show window and start playback
                 await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
                 {
                     _lockScreenWindow.Show();
+                    _lockScreenWindow.StartPlayback();
                 });
 
-                // Activate lock screen mode
+                // Activate lock screen mode (system integration) - video is already configured and playing
                 var activated = await _lockScreenWindow.ActivateLockScreenAsync();
                 if (!activated)
                 {
@@ -311,7 +315,7 @@ namespace VideoLockScreen.UI.Services
             }
         }
 
-        private async void OnSessionLocked(object? sender, Core.SessionEventArgs e)
+        private void OnSessionLocked(object? sender, Core.SessionEventArgs e)
         {
             _logger.LogInformation("Windows session locked");
             
@@ -319,7 +323,7 @@ namespace VideoLockScreen.UI.Services
             // This should be handled by the main application logic
         }
 
-        private async void OnSessionUnlocked(object? sender, Core.SessionEventArgs e)
+        private void OnSessionUnlocked(object? sender, Core.SessionEventArgs e)
         {
             _logger.LogInformation("Windows session unlocked");
             
@@ -329,6 +333,104 @@ namespace VideoLockScreen.UI.Services
         }
 
         #endregion
+
+        /// <summary>
+        /// Pre-validates a video file for lock screen use
+        /// </summary>
+        public async Task<VideoValidationResult> ValidateVideoAsync(string videoPath)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(videoPath) || !System.IO.File.Exists(videoPath))
+                {
+                    return VideoValidationResult.Failure("Video file not found");
+                }
+
+                var fileInfo = new System.IO.FileInfo(videoPath);
+                
+                // Check file size (reasonable limits)
+                if (fileInfo.Length > 2L * 1024 * 1024 * 1024) // 2GB limit
+                {
+                    return VideoValidationResult.Failure("Video file too large (max 2GB)");
+                }
+
+                // Test video loading using a temporary MediaElement
+                var validationResult = await System.Windows.Application.Current.Dispatcher.InvokeAsync(async () =>
+                {
+                    try
+                    {
+                        var testMedia = new System.Windows.Controls.MediaElement
+                        {
+                            Source = new Uri(videoPath),
+                            LoadedBehavior = System.Windows.Controls.MediaState.Manual,
+                            Volume = 0 // Muted for testing
+                        };
+
+                        var tcs = new TaskCompletionSource<VideoValidationResult>();
+                        var timeout = Task.Delay(10000); // 10 second timeout
+
+                        System.Windows.RoutedEventHandler mediaOpened = (s, e) =>
+                        {
+                            try
+                            {
+                                var duration = testMedia.NaturalDuration.HasTimeSpan 
+                                    ? testMedia.NaturalDuration.TimeSpan 
+                                    : TimeSpan.Zero;
+                                    
+                                var resolution = $"{testMedia.NaturalVideoWidth}x{testMedia.NaturalVideoHeight}";
+                                
+                                testMedia.Close();
+                                tcs.SetResult(VideoValidationResult.Success(duration, resolution, fileInfo.Length));
+                            }
+                            catch (Exception ex)
+                            {
+                                testMedia.Close();
+                                tcs.SetResult(VideoValidationResult.Failure($"Error reading video properties: {ex.Message}"));
+                            }
+                        };
+
+                        System.EventHandler<System.Windows.ExceptionRoutedEventArgs> mediaFailed = (s, e) =>
+                        {
+                            testMedia.Close();
+                            tcs.SetResult(VideoValidationResult.Failure($"Video format not supported: {e.ErrorException?.Message}"));
+                        };
+
+                        testMedia.MediaOpened += mediaOpened;
+                        testMedia.MediaFailed += mediaFailed;
+
+                        // Add to a temporary container to trigger loading
+                        var tempGrid = new System.Windows.Controls.Grid();
+                        tempGrid.Children.Add(testMedia);
+                        
+                        var completedTask = await Task.WhenAny(tcs.Task, timeout);
+                        
+                        // Cleanup
+                        testMedia.MediaOpened -= mediaOpened;
+                        testMedia.MediaFailed -= mediaFailed;
+                        tempGrid.Children.Clear();
+                        testMedia.Close();
+
+                        if (completedTask == timeout)
+                        {
+                            return VideoValidationResult.Failure("Video validation timeout - file may be corrupted or too large");
+                        }
+
+                        return await tcs.Task;
+                    }
+                    catch (Exception ex)
+                    {
+                        return VideoValidationResult.Failure($"Video validation failed: {ex.Message}");
+                    }
+                });
+
+                return await validationResult;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error validating video: {VideoPath}", videoPath);
+                return VideoValidationResult.Failure($"Validation error: {ex.Message}");
+            }
+        }
 
         public void Dispose()
         {
@@ -387,4 +489,36 @@ namespace VideoLockScreen.UI.Services
     }
 
     #endregion
+
+    /// <summary>
+    /// Result of video validation for lock screen use
+    /// </summary>
+    public class VideoValidationResult
+    {
+        public bool IsValid { get; set; }
+        public string? ErrorMessage { get; set; }
+        public TimeSpan Duration { get; set; }
+        public string? Resolution { get; set; }
+        public long FileSize { get; set; }
+        
+        public static VideoValidationResult Success(TimeSpan duration, string resolution, long fileSize)
+        {
+            return new VideoValidationResult
+            {
+                IsValid = true,
+                Duration = duration,
+                Resolution = resolution,
+                FileSize = fileSize
+            };
+        }
+        
+        public static VideoValidationResult Failure(string errorMessage)
+        {
+            return new VideoValidationResult
+            {
+                IsValid = false,
+                ErrorMessage = errorMessage
+            };
+        }
+    }
 }

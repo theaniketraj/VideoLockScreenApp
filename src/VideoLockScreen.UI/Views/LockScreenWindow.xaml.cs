@@ -77,19 +77,16 @@ namespace VideoLockScreen.UI.Views
         }
 
         /// <summary>
-        /// Loads and starts playing a video
+        /// Configures the video for playback (does not start playing)
         /// </summary>
-        public async Task<bool> LoadVideoAsync(string videoPath, VideoLockScreenSettings settings)
+        public void ConfigureVideo(string videoPath, VideoLockScreenSettings settings)
         {
             try
             {
                 _currentVideoPath = videoPath;
                 _settings = settings;
 
-                _logger.LogInformation("Loading video: {VideoPath}", videoPath);
-
-                // Show loading overlay
-                ShowLoadingOverlay(true);
+                _logger.LogInformation("Configuring video: {VideoPath}", videoPath);
 
                 // Configure MediaElement
                 VideoPlayer.Source = new Uri(videoPath);
@@ -107,14 +104,35 @@ namespace VideoLockScreen.UI.Views
 
                 // Update video info display
                 UpdateVideoInfo(videoPath);
-
-                return true;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to load video: {VideoPath}", videoPath);
-                ShowErrorOverlay($"Failed to load video: {ex.Message}");
-                return false;
+                _logger.LogError(ex, "Failed to configure video: {VideoPath}", videoPath);
+                ShowErrorOverlay($"Failed to configure video: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Starts video playback (call after ConfigureVideo)
+        /// </summary>
+        public void StartPlayback()
+        {
+            try
+            {
+                if (VideoPlayer.Source != null)
+                {
+                    // The video will start playing when MediaOpened event fires
+                    _logger.LogInformation("Starting video playback");
+                }
+                else
+                {
+                    ShowErrorOverlay("No video configured for playback");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to start video playback");
+                ShowErrorOverlay($"Failed to start playback: {ex.Message}");
             }
         }
 
