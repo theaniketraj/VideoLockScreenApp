@@ -399,30 +399,50 @@ namespace VideoLockScreen.UI.Services
 
         private async void OnSessionLocked(object? sender, Core.SessionEventArgs e)
         {
-            _logger.LogInformation("Windows session locked - checking for video lock screen activation");
+            _logger.LogInformation("🚨🚨🚨 SESSION LOCK DETECTED - THIS SHOULD APPEAR IN LOGS! 🚨🚨🚨");
             
-            // THIS IS THE CORE FUNCTIONALITY! Auto-activate video lock screen when Windows locks
+            // EMERGENCY TEST: Show a simple message box to verify this event fires
+            try
+            {
+                await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    System.Windows.MessageBox.Show(
+                        "SESSION LOCK DETECTED!\n\nIf you see this message, the session monitoring is working.\n\nPress OK to continue.",
+                        "Video Lock Screen - Debug",
+                        System.Windows.MessageBoxButton.OK,
+                        System.Windows.MessageBoxImage.Information);
+                });
+                
+                _logger.LogInformation("✅ Message box shown successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "❌ Failed to show debug message box");
+            }
+            
+            // ACTUAL FUNCTIONALITY: Show video overlay
             if (!_isActive && _currentSettings != null && !string.IsNullOrEmpty(_currentSettings.VideoFilePath))
             {
-                _logger.LogInformation("Auto-activating video lock screen for session lock");
+                _logger.LogInformation("📹 Attempting to show video lock screen overlay");
                 
                 try
                 {
-                    // Use the current configured settings to show video on lock screen
-                    await ActivateLockScreenAsync(_currentSettings.VideoFilePath, _currentSettings);
+                    await System.Windows.Application.Current.Dispatcher.InvokeAsync(async () =>
+                    {
+                        await ActivateLockScreenAsync(_currentSettings.VideoFilePath, _currentSettings);
+                    }, System.Windows.Threading.DispatcherPriority.Send);
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to auto-activate video lock screen on session lock");
+                    _logger.LogError(ex, "❌ Failed to show video overlay on session lock");
                 }
-            }
-            else if (_isActive)
-            {
-                _logger.LogInformation("Video lock screen already active");
             }
             else
             {
-                _logger.LogWarning("No video configured for lock screen - Windows will show default lock screen");
+                _logger.LogWarning("⚠️ No video configured or already active - cannot show video lock screen");
+                _logger.LogWarning($"   _isActive: {_isActive}");
+                _logger.LogWarning($"   _currentSettings: {(_currentSettings != null ? "SET" : "NULL")}");
+                _logger.LogWarning($"   VideoFilePath: {_currentSettings?.VideoFilePath ?? "NULL"}");
             }
         }
 

@@ -338,7 +338,10 @@ namespace VideoLockScreen.UI.Views
 
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
-            _logger.LogInformation("Lock screen window loaded");
+            _logger.LogInformation("Lock screen window loaded - FORCING to top");
+            
+            // AGGRESSIVE: Force window to top of all others
+            ForceWindowToTop();
             
             // IMMEDIATELY show emergency exit instructions for user safety
             ShowEmergencyInstructions(true);
@@ -347,6 +350,47 @@ namespace VideoLockScreen.UI.Views
             Focus();
             Activate();
         }
+
+        /// <summary>
+        /// Aggressively forces the window to appear on top of everything, including Windows lock screen
+        /// </summary>
+        private void ForceWindowToTop()
+        {
+            try
+            {
+                // Multiple approaches to force window to top
+                Topmost = true;
+                WindowState = WindowState.Maximized;
+                
+                // Win32 API calls to force window above everything
+                var hwnd = new System.Windows.Interop.WindowInteropHelper(this).Handle;
+                if (hwnd != IntPtr.Zero)
+                {
+                    // HWND_TOPMOST = -1, SWP_NOSIZE | SWP_NOMOVE = 0x0003
+                    SetWindowPos(hwnd, new IntPtr(-1), 0, 0, 0, 0, 0x0003);
+                    
+                    // Force bring to foreground
+                    SetForegroundWindow(hwnd);
+                    BringWindowToTop(hwnd);
+                }
+                
+                _logger.LogInformation("Window forced to top successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to force window to top");
+            }
+        }
+
+        // Win32 API declarations for forcing window to top
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+        
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+        
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool BringWindowToTop(IntPtr hWnd);
 
         private async void Window_Closing(object sender, System.ComponentModel.CancelEventArgs e)
         {
