@@ -868,14 +868,19 @@ namespace VideoLockScreen.UI.ViewModels
                     // Additional settings can be configured here
                 };
 
-                // Show progress in main app while video loads in background
-                LockScreenStatusMessage = "Preloading video... (you can still use your computer)";
+                // Configure video for automatic activation on Windows lock (Win+L)
+                LockScreenStatusMessage = "Configuring video for lock screen activation...";
                 
-                var success = await _lockScreenService.ActivateLockScreenAsync(selectedVideo.FilePath, settings);
+                var success = await _lockScreenService.ConfigureAutoLockScreenAsync(selectedVideo.FilePath, settings);
                 
-                if (!success)
+                if (success)
                 {
-                    LockScreenStatusMessage = "Failed to activate lock screen - video could not be loaded.";
+                    LockScreenStatusMessage = "Video lock screen ready! Press Win+L to test.";
+                    IsLockScreenActive = true; // Mark as configured/ready
+                }
+                else
+                {
+                    LockScreenStatusMessage = "Failed to configure video lock screen.";
                     CanActivateLockScreen = true;
                 }
             }
@@ -905,14 +910,14 @@ namespace VideoLockScreen.UI.ViewModels
                     return;
                 }
 
-                LockScreenStatusMessage = "Deactivating lock screen...";
+                LockScreenStatusMessage = "Disabling video lock screen...";
                 
-                var success = await _lockScreenService.DeactivateLockScreenAsync();
+                // Disable automatic activation and deactivate if currently active
+                _lockScreenService.DisableAutoLockScreen();
+                await _lockScreenService.DeactivateLockScreenAsync();
                 
-                if (!success)
-                {
-                    LockScreenStatusMessage = "Failed to deactivate lock screen.";
-                }
+                LockScreenStatusMessage = "Video lock screen disabled.";
+                IsLockScreenActive = false;
             }
             catch (Exception ex)
             {

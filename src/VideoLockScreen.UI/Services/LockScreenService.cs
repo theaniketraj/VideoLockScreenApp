@@ -52,6 +52,16 @@ namespace VideoLockScreen.UI.Services
         Task<bool> DeactivateLockScreenAsync();
 
         /// <summary>
+        /// Configures video for automatic activation when Windows locks (Win+L)
+        /// </summary>
+        Task<bool> ConfigureAutoLockScreenAsync(string videoPath, VideoLockScreenSettings settings);
+
+        /// <summary>
+        /// Disables automatic lock screen activation
+        /// </summary>
+        void DisableAutoLockScreen();
+
+        /// <summary>
         /// Immediately deactivates lock screen (emergency exit)
         /// </summary>
         Task ForceDeactivateAsync();
@@ -318,6 +328,51 @@ namespace VideoLockScreen.UI.Services
             await CleanupLockScreenWindow();
         }
 
+        /// <summary>
+        /// Configures video for automatic activation when Windows locks (Win+L) - THE CORE FEATURE!
+        /// </summary>
+        public async Task<bool> ConfigureAutoLockScreenAsync(string videoPath, VideoLockScreenSettings settings)
+        {
+            try
+            {
+                _logger.LogInformation("Configuring auto lock screen with video: {VideoPath}", videoPath);
+
+                if (string.IsNullOrEmpty(videoPath) || !System.IO.File.Exists(videoPath))
+                {
+                    _logger.LogError("Invalid video path for auto lock screen: {VideoPath}", videoPath);
+                    return false;
+                }
+
+                // Validate the video first
+                var validation = await ValidateVideoAsync(videoPath);
+                if (!validation.IsValid)
+                {
+                    _logger.LogError("Video validation failed for auto lock screen: {Error}", validation.ErrorMessage);
+                    return false;
+                }
+
+                // Store settings for automatic activation on session lock
+                _currentSettings = settings;
+                
+                _logger.LogInformation("Auto lock screen configured successfully - will activate on Win+L");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to configure auto lock screen");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Disables automatic lock screen activation
+        /// </summary>
+        public void DisableAutoLockScreen()
+        {
+            _logger.LogInformation("Disabling auto lock screen");
+            _currentSettings = null;
+        }
+
         #region Event Handlers
 
         private async void OnLockScreenExitRequested(object? sender, LockScreenExitEventArgs e)
@@ -342,21 +397,53 @@ namespace VideoLockScreen.UI.Services
             }
         }
 
-        private void OnSessionLocked(object? sender, Core.SessionEventArgs e)
+        private async void OnSessionLocked(object? sender, Core.SessionEventArgs e)
         {
-            _logger.LogInformation("Windows session locked");
+            _logger.LogInformation("Windows session locked - checking for video lock screen activation");
             
-            // Don't auto-activate lock screen on session lock
-            // This should be handled by the main application logic
+            // THIS IS THE CORE FUNCTIONALITY! Auto-activate video lock screen when Windows locks
+            if (!_isActive && _currentSettings != null && !string.IsNullOrEmpty(_currentSettings.VideoFilePath))
+            {
+                _logger.LogInformation("Auto-activating video lock screen for session lock");
+                
+                try
+                {
+                    // Use the current configured settings to show video on lock screen
+                    await ActivateLockScreenAsync(_currentSettings.VideoFilePath, _currentSettings);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to auto-activate video lock screen on session lock");
+                }
+            }
+            else if (_isActive)
+            {
+                _logger.LogInformation("Video lock screen already active");
+            }
+            else
+            {
+                _logger.LogWarning("No video configured for lock screen - Windows will show default lock screen");
+            }
         }
 
-        private void OnSessionUnlocked(object? sender, Core.SessionEventArgs e)
+        private async void OnSessionUnlocked(object? sender, Core.SessionEventArgs e)
         {
             _logger.LogInformation("Windows session unlocked");
             
-            // Optionally deactivate lock screen when session is unlocked
-            // For now, don't auto-deactivate on session unlock
-            // This behavior can be configured later
+            // Optionally deactivate video lock screen when session unlocks
+            if (_isActive)
+            {
+                _logger.LogInformation("Auto-deactivating video lock screen for session unlock");
+                
+                try
+                {
+                    await DeactivateLockScreenAsync();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to auto-deactivate video lock screen on session unlock");
+                }
+            }
         }
 
         #endregion
