@@ -113,7 +113,90 @@ namespace VideoLockScreen.UI.Views
         }
 
         /// <summary>
-        /// Starts video playback (call after ConfigureVideo)
+        /// Preloads video in background without showing the window - SAFE APPROACH
+        /// </summary>
+        public async Task<bool> PreloadVideoAsync(string videoPath, VideoLockScreenSettings settings)
+        {
+            try
+            {
+                _currentVideoPath = videoPath;
+                _settings = settings;
+                
+                _logger.LogInformation("Preloading video in background: {VideoPath}", videoPath);
+
+                var tcs = new TaskCompletionSource<bool>();
+                var timeout = Task.Delay(TimeSpan.FromSeconds(15)); // 15 second timeout for loading
+
+                System.Windows.RoutedEventHandler mediaOpened = null;
+                System.EventHandler<System.Windows.ExceptionRoutedEventArgs> mediaFailed = null;
+
+                mediaOpened = (s, e) =>
+                {
+                    _logger.LogInformation("Video preloaded successfully: {VideoPath}", videoPath);
+                    VideoPlayer.MediaOpened -= mediaOpened;
+                    VideoPlayer.MediaFailed -= mediaFailed;
+                    tcs.TrySetResult(true);
+                };
+
+                mediaFailed = (s, e) =>
+                {
+                    _logger.LogError(e.ErrorException, "Video preload failed: {VideoPath}", videoPath);
+                    VideoPlayer.MediaOpened -= mediaOpened;
+                    VideoPlayer.MediaFailed -= mediaFailed;
+                    tcs.TrySetResult(false);
+                };
+
+                // Subscribe to events
+                VideoPlayer.MediaOpened += mediaOpened;
+                VideoPlayer.MediaFailed += mediaFailed;
+
+                // Configure MediaElement for background loading
+                VideoPlayer.Source = new Uri(videoPath);
+                VideoPlayer.Volume = 0; // Muted during preload
+                VideoPlayer.LoadedBehavior = MediaState.Manual; // Manual control
+                VideoPlayer.UnloadedBehavior = MediaState.Stop;
+
+                // Set video scaling for when it's eventually shown
+                VideoPlayer.Stretch = settings.ScalingMode switch
+                {
+                    VideoScalingMode.Stretch => System.Windows.Media.Stretch.Fill,
+                    VideoScalingMode.Uniform => System.Windows.Media.Stretch.Uniform,
+                    VideoScalingMode.None => System.Windows.Media.Stretch.None,
+                    _ => System.Windows.Media.Stretch.UniformToFill
+                };
+
+                // Wait for either success or timeout
+                var completedTask = await Task.WhenAny(tcs.Task, timeout);
+                
+                // Cleanup event handlers
+                VideoPlayer.MediaOpened -= mediaOpened;
+                VideoPlayer.MediaFailed -= mediaFailed;
+
+                if (completedTask == timeout)
+                {
+                    _logger.LogWarning("Video preload timed out: {VideoPath}", videoPath);
+                    return false;
+                }
+
+                var success = await tcs.Task;
+                if (success)
+                {
+                    // Configure final settings now that video is loaded
+                    VideoPlayer.Volume = settings.AudioEnabled ? settings.Volume : 0;
+                    UpdateVideoInfo(videoPath);
+                }
+
+                return success;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error preloading video: {VideoPath}", videoPath);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Starts video playback (call after PreloadVideoAsync)
         /// </summary>
         public void StartPlayback()
         {
@@ -121,13 +204,9 @@ namespace VideoLockScreen.UI.Views
             {
                 if (VideoPlayer.Source != null)
                 {
-                    _logger.LogInformation("Starting video playback");
-                    ShowLoadingOverlay(true);
-                    
-                    // Try to start playback immediately
-                    // MediaOpened event will handle the actual play() call and hide loading
-                    VideoPlayer.LoadedBehavior = MediaState.Manual;
-                    VideoPlayer.UnloadedBehavior = MediaState.Stop;
+                    _logger.LogInformation("Starting preloaded video playback");
+                    // Video is already loaded, start playing immediately
+                    VideoPlayer.Play();
                 }
                 else
                 {
@@ -260,6 +339,9 @@ namespace VideoLockScreen.UI.Views
         private void Window_Loaded(object sender, RoutedEventArgs e)
         {
             _logger.LogInformation("Lock screen window loaded");
+            
+            // IMMEDIATELY show emergency exit instructions for user safety
+            ShowEmergencyInstructions(true);
             
             // Focus the window to ensure it receives key events
             Focus();

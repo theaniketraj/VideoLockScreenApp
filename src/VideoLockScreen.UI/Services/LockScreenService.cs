@@ -121,12 +121,12 @@ namespace VideoLockScreen.UI.Services
                     return false;
                 }
 
-                _logger.LogInformation("Activating lock screen with pre-validated video: {VideoPath}", videoPath);
+                _logger.LogInformation("Pre-loading video in background: {VideoPath}", videoPath);
 
                 // Store current settings
                 _currentSettings = settings;
 
-                // Create lock screen window on UI thread
+                // Create lock screen window on UI thread but DON'T SHOW IT YET
                 _lockScreenWindow = await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
                 {
                     var window = _serviceProvider.GetRequiredService<LockScreenWindow>();
@@ -134,20 +134,43 @@ namespace VideoLockScreen.UI.Services
                     return window;
                 });
 
-                // Configure video before showing window (safe since video is pre-validated)
-                await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+                // Configure and test video loading BEFORE showing lock screen window
+                var videoConfigured = await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
                 {
-                    _lockScreenWindow.ConfigureVideo(videoPath, settings);
+                    try
+                    {
+                        _lockScreenWindow.ConfigureVideo(videoPath, settings);
+                        return true;
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to configure video");
+                        return false;
+                    }
                 });
 
-                // Show window and start playback
+                if (!videoConfigured)
+                {
+                    _logger.LogError("Video configuration failed, aborting lock screen activation");
+                    await CleanupLockScreenWindow();
+                    return false;
+                }
+
+                _logger.LogInformation("Video configured successfully, showing lock screen");
+
+                // Show lock screen window and immediately start playback
                 await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
                 {
                     _lockScreenWindow.Show();
                     _lockScreenWindow.StartPlayback();
                 });
 
-                // Activate lock screen mode (system integration) - video is already configured and playing
+                // CRITICAL FIX: Wait a moment for video to start loading before activating system lock
+                // This prevents the user from being trapped in a loading state with no escape
+                _logger.LogInformation("Waiting for video to begin loading before system integration...");
+                await Task.Delay(2000); // 2 second grace period
+
+                // Now activate system integration - user has had time to see the video loading
                 var activated = await _lockScreenWindow.ActivateLockScreenAsync();
                 if (!activated)
                 {
@@ -160,7 +183,7 @@ namespace VideoLockScreen.UI.Services
                 // Fire activation event
                 LockScreenActivated?.Invoke(this, new LockScreenActivatedEventArgs(videoPath, settings));
 
-                _logger.LogInformation("Lock screen activated successfully");
+                _logger.LogInformation("Lock screen activated successfully with preloaded video");
                 return true;
             }
             catch (Exception ex)

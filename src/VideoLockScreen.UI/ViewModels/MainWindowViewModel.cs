@@ -846,8 +846,8 @@ namespace VideoLockScreen.UI.ViewModels
                     return;
                 }
 
-                // STEP 3: Only activate lock screen with validated video
-                LockScreenStatusMessage = "Activating lock screen (video ready)...";
+                // STEP 3: Load video in background BEFORE activating lock screen
+                LockScreenStatusMessage = "Loading video in background (safe)...";
 
                 // Create settings from current configuration
                 var settings = new VideoLockScreenSettings
@@ -868,11 +868,14 @@ namespace VideoLockScreen.UI.ViewModels
                     // Additional settings can be configured here
                 };
 
+                // Show progress in main app while video loads in background
+                LockScreenStatusMessage = "Preloading video... (you can still use your computer)";
+                
                 var success = await _lockScreenService.ActivateLockScreenAsync(selectedVideo.FilePath, settings);
                 
                 if (!success)
                 {
-                    LockScreenStatusMessage = "Failed to activate lock screen.";
+                    LockScreenStatusMessage = "Failed to activate lock screen - video could not be loaded.";
                     CanActivateLockScreen = true;
                 }
             }
