@@ -17,18 +17,21 @@ namespace VideoLockScreen.Service
         private readonly IConfigurationService _configurationService;
         private readonly IVideoPlayerService _videoPlayerService;
         private readonly LockScreenManager _lockScreenManager;
+        private readonly WindowsLockScreenManager _windowsLockScreenManager;
         private SessionMonitor? _sessionMonitor;
 
         public VideoLockScreenService(
             ILogger<VideoLockScreenService> logger,
             IConfigurationService configurationService,
             IVideoPlayerService videoPlayerService,
-            LockScreenManager lockScreenManager)
+            LockScreenManager lockScreenManager,
+            WindowsLockScreenManager windowsLockScreenManager)
         {
             _logger = logger;
             _configurationService = configurationService;
             _videoPlayerService = videoPlayerService;
             _lockScreenManager = lockScreenManager;
+            _windowsLockScreenManager = windowsLockScreenManager;
         }
 
         /// <summary>
@@ -156,6 +159,24 @@ namespace VideoLockScreen.Service
                     return;
                 }
 
+                // Update Windows lock screen background
+                try
+                {
+                    var registryConfigured = await _windowsLockScreenManager.SetVideoLockScreenAsync(settings.VideoFilePath);
+                    if (!registryConfigured)
+                    {
+                        _logger.LogWarning("Failed to update Windows lock screen background. A placeholder may be used instead.");
+                    }
+                    else
+                    {
+                        _logger.LogInformation("Windows lock screen background updated successfully");
+                    }
+                }
+                catch (Exception lockScreenEx)
+                {
+                    _logger.LogWarning(lockScreenEx, "Unable to apply lock screen image via registry");
+                }
+
                 // Show the video lock screen
                 await _lockScreenManager.ShowLockScreenAsync(settings);
                 
@@ -238,7 +259,7 @@ namespace VideoLockScreen.Service
         /// <summary>
         /// Performs periodic health checks
         /// </summary>
-        private async Task PerformHealthCheckAsync()
+        private Task PerformHealthCheckAsync()
         {
             try
             {
@@ -281,6 +302,8 @@ namespace VideoLockScreen.Service
             {
                 _logger.LogError(ex, "Error during health check");
             }
+
+            return Task.CompletedTask;
         }
 
         /// <summary>

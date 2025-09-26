@@ -2,8 +2,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using System.Windows;
+using VideoLockScreen.Core.DependencyInjection;
 using VideoLockScreen.Core.Services;
-using VideoLockScreen.Core.Utilities;
 using WpfApplication = System.Windows.Application;
 
 namespace VideoLockScreen.Service
@@ -61,10 +61,7 @@ namespace VideoLockScreen.Service
                 .ConfigureServices((hostContext, services) =>
                 {
                     // Register core services
-                    services.AddSingleton<IConfigurationService, ConfigurationService>();
-                    services.AddSingleton<IVideoPlayerService, VideoPlayerService>();
-                    services.AddSingleton<VideoFileHelper>();
-                    services.AddSingleton<SystemHelper>();
+                    services.ConfigureCoreServices();
                     services.AddSingleton<LockScreenManager>();
                     
                     // Register the main service

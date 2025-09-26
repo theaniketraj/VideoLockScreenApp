@@ -12,16 +12,20 @@ namespace VideoLockScreen.Core.Services
     /// </summary>
     public class WindowsLockScreenManager
     {
-        private readonly ILogger<WindowsLockScreenManager> _logger;
+    private readonly ILogger<WindowsLockScreenManager> _logger;
+    private readonly IVideoFrameExtractor _videoFrameExtractor;
         
         // Registry paths for lock screen configuration
         private const string PERSONALIZATION_KEY = @"SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP";
         private const string LOCK_SCREEN_IMAGE_PATH = "LockScreenImagePath";
         private const string LOCK_SCREEN_IMAGE_URL = "LockScreenImageUrl";
         
-        public WindowsLockScreenManager(ILogger<WindowsLockScreenManager> logger)
+        public WindowsLockScreenManager(
+            ILogger<WindowsLockScreenManager> logger,
+            IVideoFrameExtractor videoFrameExtractor)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _videoFrameExtractor = videoFrameExtractor ?? throw new ArgumentNullException(nameof(videoFrameExtractor));
         }
 
         /// <summary>
@@ -40,14 +44,22 @@ namespace VideoLockScreen.Core.Services
                 _logger.LogInformation("Setting video as lock screen: {VideoPath}", videoPath);
 
                 // Extract first frame as static image for lock screen
-                var lockScreenImagePath = await ExtractVideoFrameAsync(videoPath);
-                if (string.IsNullOrEmpty(lockScreenImagePath))
+                var frameResult = await _videoFrameExtractor.ExtractFrameAsync(videoPath);
+                if (!frameResult.Success || string.IsNullOrWhiteSpace(frameResult.ImagePath))
                 {
+                    _logger.LogError("Failed to prepare lock screen image for video: {VideoPath}. Reason: {Reason}",
+                        videoPath,
+                        frameResult.ErrorMessage ?? "unknown error");
                     return false;
                 }
 
+                if (frameResult.IsPlaceholder)
+                {
+                    _logger.LogWarning("Using placeholder image for lock screen because: {Reason}", frameResult.ErrorMessage);
+                }
+
                 // Set the extracted frame as Windows lock screen
-                return SetLockScreenImage(lockScreenImagePath);
+                return SetLockScreenImage(frameResult.ImagePath);
             }
             catch (Exception ex)
             {
@@ -115,70 +127,6 @@ namespace VideoLockScreen.Core.Services
             {
                 _logger.LogError(ex, "Failed to set lock screen via Group Policy");
                 return false;
-            }
-        }
-
-        /// <summary>
-        /// Extracts the first frame of a video as a static image for lock screen
-        /// </summary>
-        private async Task<string> ExtractVideoFrameAsync(string videoPath)
-        {
-            try
-            {
-                var outputDir = Path.Combine(Path.GetTempPath(), "VideoLockScreen");
-                Directory.CreateDirectory(outputDir);
-                
-                var outputImagePath = Path.Combine(outputDir, "lockscreen_frame.jpg");
-                
-                // TODO: Use FFmpeg or similar to extract first frame
-                // For now, create a placeholder approach
-                _logger.LogWarning("Video frame extraction not yet implemented - using placeholder");
-                
-                // Create a simple colored image as placeholder
-                await CreatePlaceholderImageAsync(outputImagePath);
-                
-                return outputImagePath;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to extract video frame");
-                return string.Empty;
-            }
-        }
-
-        /// <summary>
-        /// Creates a placeholder image (temporary solution)
-        /// </summary>
-        private async Task CreatePlaceholderImageAsync(string outputPath)
-        {
-            // This is a temporary placeholder - in production, you'd extract actual video frames
-            try
-            {
-                using (var bitmap = new System.Drawing.Bitmap(1920, 1080))
-                using (var graphics = System.Drawing.Graphics.FromImage(bitmap))
-                {
-                    graphics.Clear(System.Drawing.Color.Black);
-                    
-                    using (var font = new System.Drawing.Font("Arial", 48, System.Drawing.FontStyle.Bold))
-                    using (var brush = new System.Drawing.SolidBrush(System.Drawing.Color.White))
-                    {
-                        var text = "Video Lock Screen Active";
-                        var textSize = graphics.MeasureString(text, font);
-                        var x = (bitmap.Width - textSize.Width) / 2;
-                        var y = (bitmap.Height - textSize.Height) / 2;
-                        
-                        graphics.DrawString(text, font, brush, x, y);
-                    }
-                    
-                    bitmap.Save(outputPath, System.Drawing.Imaging.ImageFormat.Jpeg);
-                }
-                
-                _logger.LogInformation("Placeholder lock screen image created: {OutputPath}", outputPath);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to create placeholder image");
-                throw;
             }
         }
 
