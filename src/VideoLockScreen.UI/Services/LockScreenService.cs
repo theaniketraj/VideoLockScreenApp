@@ -82,6 +82,7 @@ namespace VideoLockScreen.UI.Services
         private readonly ISystemIntegrationService _systemIntegrationService;
         private readonly SessionMonitor _sessionMonitor;
         private readonly VideoFileHelper _videoFileHelper;
+        private readonly WindowsLockScreenManager _windowsLockScreenManager;
 
         private LockScreenWindow? _lockScreenWindow;
         private bool _isActive;
@@ -99,13 +100,15 @@ namespace VideoLockScreen.UI.Services
             IServiceProvider serviceProvider,
             ISystemIntegrationService systemIntegrationService,
             SessionMonitor sessionMonitor,
-            VideoFileHelper videoFileHelper)
+            VideoFileHelper videoFileHelper,
+            WindowsLockScreenManager windowsLockScreenManager)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
             _systemIntegrationService = systemIntegrationService ?? throw new ArgumentNullException(nameof(systemIntegrationService));
             _sessionMonitor = sessionMonitor ?? throw new ArgumentNullException(nameof(sessionMonitor));
             _videoFileHelper = videoFileHelper ?? throw new ArgumentNullException(nameof(videoFileHelper));
+            _windowsLockScreenManager = windowsLockScreenManager ?? throw new ArgumentNullException(nameof(windowsLockScreenManager));
 
             // Subscribe to session events
             _sessionMonitor.SessionLocked += OnSessionLocked;
@@ -168,19 +171,25 @@ namespace VideoLockScreen.UI.Services
 
                 _logger.LogInformation("Video configured successfully, showing lock screen");
 
-                // Show lock screen window and immediately start playback
+                // Show lock screen window and immediately start playback WITH MAXIMUM URGENCY
                 await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
                 {
+                    _logger.LogInformation("🚀 SHOWING WINDOW WITH MAXIMUM PRIORITY");
+                    
+                    // FORCE WINDOW TO APPEAR IMMEDIATELY
                     _lockScreenWindow.Show();
+                    _lockScreenWindow.Activate();
+                    _lockScreenWindow.Focus();
+                    _lockScreenWindow.Topmost = true;
+                    
+                    _logger.LogInformation("🎬 STARTING VIDEO PLAYBACK");
                     _lockScreenWindow.StartPlayback();
-                });
+                    
+                    _logger.LogInformation("✅ Window shown and video started");
+                }, System.Windows.Threading.DispatcherPriority.Send); // HIGHEST PRIORITY
 
-                // CRITICAL FIX: Wait a moment for video to start loading before activating system lock
-                // This prevents the user from being trapped in a loading state with no escape
-                _logger.LogInformation("Waiting for video to begin loading before system integration...");
-                await Task.Delay(2000); // 2 second grace period
-
-                // Now activate system integration - user has had time to see the video loading
+                // IMMEDIATE ACTIVATION - NO DELAY FOR WIN+L SCENARIO
+                _logger.LogInformation("🚀 IMMEDIATE activation - no delay for Win+L responsiveness");
                 var activated = await _lockScreenWindow.ActivateLockScreenAsync();
                 if (!activated)
                 {
@@ -189,6 +198,25 @@ namespace VideoLockScreen.UI.Services
                 }
 
                 _isActive = true;
+                
+                // CRITICAL: Also configure Windows registry for proper lock screen replacement
+                _logger.LogInformation("🔧 Configuring Windows lock screen registry...");
+                try
+                {
+                    var registryConfigured = await _windowsLockScreenManager.SetVideoLockScreenAsync(videoPath);
+                    if (registryConfigured)
+                    {
+                        _logger.LogInformation("✅ Windows lock screen registry configured successfully");
+                    }
+                    else
+                    {
+                        _logger.LogWarning("⚠️ Failed to configure Windows lock screen registry - overlay only");
+                    }
+                }
+                catch (Exception regEx)
+                {
+                    _logger.LogWarning(regEx, "⚠️ Registry configuration failed - continuing with overlay only");
+                }
                 
                 // Fire activation event
                 LockScreenActivated?.Invoke(this, new LockScreenActivatedEventArgs(videoPath, settings));
@@ -399,47 +427,31 @@ namespace VideoLockScreen.UI.Services
 
         private async void OnSessionLocked(object? sender, Core.SessionEventArgs e)
         {
-            _logger.LogInformation("🚨🚨🚨 SESSION LOCK DETECTED - THIS SHOULD APPEAR IN LOGS! 🚨🚨🚨");
+            _logger.LogInformation("🚨 SESSION LOCK DETECTED - IMMEDIATE VIDEO OVERLAY ACTIVATION! 🚨");
             
-            // EMERGENCY TEST: Show a simple message box to verify this event fires
-            try
-            {
-                await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
-                {
-                    System.Windows.MessageBox.Show(
-                        "SESSION LOCK DETECTED!\n\nIf you see this message, the session monitoring is working.\n\nPress OK to continue.",
-                        "Video Lock Screen - Debug",
-                        System.Windows.MessageBoxButton.OK,
-                        System.Windows.MessageBoxImage.Information);
-                });
-                
-                _logger.LogInformation("✅ Message box shown successfully");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "❌ Failed to show debug message box");
-            }
-            
-            // ACTUAL FUNCTIONALITY: Show video overlay
+            // NO MESSAGE BOX - IMMEDIATE ACTION ONLY
             if (!_isActive && _currentSettings != null && !string.IsNullOrEmpty(_currentSettings.VideoFilePath))
             {
-                _logger.LogInformation("📹 Attempting to show video lock screen overlay");
+                _logger.LogInformation("📹 URGENT: Showing video lock screen overlay IMMEDIATELY");
                 
                 try
                 {
+                    // CRITICAL: Show video overlay with ZERO delay and highest priority
                     await System.Windows.Application.Current.Dispatcher.InvokeAsync(async () =>
                     {
+                        _logger.LogInformation("🎬 Creating video lock screen window NOW");
                         await ActivateLockScreenAsync(_currentSettings.VideoFilePath, _currentSettings);
-                    }, System.Windows.Threading.DispatcherPriority.Send);
+                        _logger.LogInformation("✅ Video lock screen window created and activated");
+                    }, System.Windows.Threading.DispatcherPriority.Send); // Highest priority
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "❌ Failed to show video overlay on session lock");
+                    _logger.LogError(ex, "❌ CRITICAL FAILURE: Could not show video overlay on session lock");
                 }
             }
             else
             {
-                _logger.LogWarning("⚠️ No video configured or already active - cannot show video lock screen");
+                _logger.LogWarning("⚠️ Cannot show video lock screen:");
                 _logger.LogWarning($"   _isActive: {_isActive}");
                 _logger.LogWarning($"   _currentSettings: {(_currentSettings != null ? "SET" : "NULL")}");
                 _logger.LogWarning($"   VideoFilePath: {_currentSettings?.VideoFilePath ?? "NULL"}");

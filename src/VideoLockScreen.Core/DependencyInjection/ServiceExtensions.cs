@@ -23,6 +23,7 @@ namespace VideoLockScreen.Core.DependencyInjection
             // Register advanced services
             services.AddSingleton<IVideoSynchronizationService, VideoSynchronizationService>();
             services.AddSingleton<ISystemIntegrationService, SystemIntegrationService>();
+            services.AddSingleton<WindowsLockScreenManager>();
             
             // Register utilities
             services.AddSingleton<SystemHelper>();
