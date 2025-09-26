@@ -11,12 +11,13 @@ namespace VideoLockScreen.Core.Models
         private string _videoFilePath = string.Empty;
         private bool _isEnabled = true;
         private bool _audioEnabled = false;
-        private double _volume = 0.5;
+    private double _volume = 0.5;
         private VideoScalingMode _scalingMode = VideoScalingMode.Stretch;
         private int _loopCount = -1; // -1 = infinite loop
         private bool _showOnAllMonitors = true;
         private TimeSpan _fadeInDuration = TimeSpan.FromMilliseconds(500);
         private TimeSpan _fadeOutDuration = TimeSpan.FromMilliseconds(500);
+    private string? _ffmpegPath;
 
         /// <summary>
         /// Path to the video file to be used as lock screen wallpaper
@@ -163,6 +164,22 @@ namespace VideoLockScreen.Core.Models
             }
         }
 
+        /// <summary>
+        /// Optional absolute path to ffmpeg executable used for frame extraction
+        /// </summary>
+        public string? FfmpegPath
+        {
+            get => _ffmpegPath;
+            set
+            {
+                if (_ffmpegPath != value)
+                {
+                    _ffmpegPath = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
         public event PropertyChangedEventHandler? PropertyChanged;
 
         protected virtual void OnPropertyChanged([System.Runtime.CompilerServices.CallerMemberName] string? propertyName = null)
@@ -203,6 +220,11 @@ namespace VideoLockScreen.Core.Models
                 {
                     errors.Add("Fade-out duration cannot be negative");
                 }
+
+                if (!string.IsNullOrWhiteSpace(FfmpegPath) && !File.Exists(FfmpegPath))
+                {
+                    errors.Add($"FFmpeg executable not found: {FfmpegPath}");
+                }
             }
 
             return errors;
@@ -224,7 +246,8 @@ namespace VideoLockScreen.Core.Models
                 LoopCount = this.LoopCount,
                 ShowOnAllMonitors = this.ShowOnAllMonitors,
                 FadeInDuration = this.FadeInDuration,
-                FadeOutDuration = this.FadeOutDuration
+                FadeOutDuration = this.FadeOutDuration,
+                FfmpegPath = this.FfmpegPath
             };
         }
     }

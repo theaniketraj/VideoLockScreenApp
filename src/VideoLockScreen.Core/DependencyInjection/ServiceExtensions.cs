@@ -19,6 +19,7 @@ namespace VideoLockScreen.Core.DependencyInjection
             services.AddSingleton<SessionMonitor>();
             services.AddSingleton<IConfigurationService, ConfigurationService>();
             services.AddSingleton<IVideoPlayerService, VideoPlayerService>();
+            services.AddSingleton<IVideoFrameExtractor, FfmpegVideoFrameExtractor>();
             
             // Register advanced services
             services.AddSingleton<IVideoSynchronizationService, VideoSynchronizationService>();
